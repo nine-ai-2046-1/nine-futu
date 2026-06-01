@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+
+# nine-futu build and deploy script
+# Builds both library and CLI, then copies CLI to ~/.local/bin/
+
+echo "Building nine-futu workspace..."
+cargo build --release
+
+echo "Copying nine-futu-cli to ~/.local/bin..."
+mkdir -p ~/.local/bin
+cp target/release/nine-futu-cli ~/.local/bin/
+
+echo "Done!"
+echo "Binary: ~/.local/bin/nine-futu-cli"
+~/.local/bin/nine-futu-cli --version
