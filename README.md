@@ -1,168 +1,234 @@
-# Futu API
+# nine-futu
 
-### 简介
+A Rust CLI tool for Futu OpenD API, designed for stock traders to quickly access market data and execute trades.
 
-[​**Futu API**](https://openapi.futunn.com/futu-api-doc/)开源项目可以满足使用[**Futu API**](https://www.futunn.com/OpenAPI)进行量化投资的需求, 并提供包括Python、Json/Protobuf协议的行情及交易接口。
+## Features
 
-- [官方在线文档](https://openapi.futunn.com/futu-api-doc/)
+- **Real-time Market Data**: Get live quotes, order book, and ticker data
+- **Historical K-line**: Access historical candlestick data with flexible date ranges
+- **Subscription Management**: Subscribe/unsubscribe to real-time data streams
+- **JSON & NDJSON Output**: Machine-readable output for automation and scripting
+- **Multi-market Support**: Hong Kong, US, and more markets
 
--------------------
+## Quick Start
 
-### 安装
-```
-pip install futu-api
-```
+### Prerequisites
 
-###### 注: 本API支持Python2.7/Python3.x。
+1. **FutuOpenD** must be running on your machine
+   - Download from [FutuOpenD Official Site](https://openapi.futunn.com/futu-api-doc/quick/opend-base.html)
+   - Default address: `127.0.0.1:11111`
 
----
+2. **Install nine-futu-cli**
+   ```bash
+   cargo install nine-futu-cli
+   ```
 
-### 快速上手
-```
+### Basic Usage
 
-# 导入futu-api
-import futu as ft
+```bash
+# Get stock snapshot
+nine-futu-cli quote snapshot -c 700
 
-# 实例化行情上下文对象
-quote_ctx = ft.OpenQuoteContext(host="127.0.0.1", port=11111)
+# Get daily K-line (last 10 bars)
+nine-futu-cli quote kline -c 700 -k 1d
 
-# 上下文控制
-quote_ctx.start()              # 开启异步数据接收
-quote_ctx.set_handler(ft.TickerHandlerBase())  # 设置用于异步处理数据的回调对象(可派生支持自定义)
+# Get 5-minute K-line for today
+nine-futu-cli quote kline -c 700 -k 5m
 
-# 低频数据接口
-market = ft.Market.HK
-code = 'HK.00123'
-code_list = [code]
-plate = 'HK.BK1107'
-print(quote_ctx.request_trading_days(market, start=None, end=None))   # 获取交易日
-print(quote_ctx.get_stock_basicinfo(market, stock_type=ft.SecurityType.STOCK))   # 获取股票信息
-print(quote_ctx.get_market_snapshot(code_list))                              # 获取市场快照
-print(quote_ctx.get_plate_list(market, ft.Plate.ALL))                         # 获取板块集合下的子板块列表
-print(quote_ctx.get_plate_stock(plate))                         # 获取板块下的股票列表
+# Get K-line for specific date
+nine-futu-cli quote kline -c 700 -k 5m -s "2026-05-28" -e "2026-05-28"
 
-# 高频数据接口
-quote_ctx.subscribe(code, [ft.SubType.QUOTE, ft.SubType.TICKER, ft.SubType.K_DAY, ft.SubType.ORDER_BOOK, ft.SubType.RT_DATA, ft.SubType.BROKER])
-print(quote_ctx.get_stock_quote(code))  # 获取报价
-print(quote_ctx.get_rt_ticker(code))   # 获取逐笔
-print(quote_ctx.get_cur_kline(code, num=100, ktype=ft.KLType.K_DAY))   #获取当前K线
-print(quote_ctx.get_order_book(code))       # 获取摆盘
-print(quote_ctx.get_rt_data(code))          # 获取分时数据
-print(quote_ctx.get_broker_queue(code))     # 获取经纪队列
+# JSON output
+nine-futu-cli quote snapshot -c 700 --json
 
-# 停止异步数据接收
-quote_ctx.stop()
-
-# 关闭对象
-quote_ctx.close()
-
-# 实例化港股交易上下文对象
-trade_hk_ctx = ft.OpenHKTradeContext(host="127.0.0.1", port=11111)
-
-# 交易接口列表
-print(trade_hk_ctx.unlock_trade(password='123456'))                # 解锁接口
-print(trade_hk_ctx.accinfo_query(trd_env=ft.TrdEnv.SIMULATE))      # 查询账户信息
-print(trade_hk_ctx.place_order(price=1.1, qty=2000, code=code, trd_side=ft.TrdSide.BUY, order_type=ft.OrderType.NORMAL, trd_env=ft.TrdEnv.SIMULATE))  # 下单接口
-print(trade_hk_ctx.order_list_query(trd_env=ft.TrdEnv.SIMULATE))      # 查询订单列表
-print(trade_hk_ctx.position_list_query(trd_env=ft.TrdEnv.SIMULATE))    # 查询持仓列表
-
-trade_hk_ctx.close()
-
+# NDJSON output (one JSON per line)
+nine-futu-cli quote kline -c 700 -k 5m --ndjson
 ```
 
----
+## Use Cases for Stock Traders
 
-### 示例策略
+### 1. Check Stock Price Before Trading
 
-- 示例策略文件位于目录: (futu-api包安装目录)/py-futu-api/examples 下，用户可参考实例策略来学习API的使用。
+```bash
+# Quick check current price
+nine-futu-cli quote snapshot -c 700
 
----
-
-### 调试开关和推送记录
-
-- set_futu_debug_model函数可以打开或关闭调试级别的log记录。
-- 如果打开记录，则会记录info级别的log并且记录所有逐笔、摆盘、券商经纪的推送记录，以便于后面排查，文件记录在%appdata%(%HOME%)\com.futunn.FutuOpenD\Log下面
-- tools\analysis下面会有对逐笔、摆盘、券商经纪的推送记录的分析脚本，与我们联系，拿到原始交易所数据后，可以载入比对（beta功能）
-
----
-
-### 组织结构
-
-```
-.
-├── futu
-│   ├── __init__.py
-│   ├── VERSION.txt
-│   ├── common                        #主要框架代码
-│   │   ├── __init__.py
-│   │   ├── callback_executor.py
-│   │   ├── comm_add_path.py
-│   │   ├── conn_key.txt
-│   │   ├── conn_mng.py
-│   │   ├── constant.py
-│   │   ├── err.py
-│   │   ├── ft_logger.py
-│   │   ├── handler_context.py
-│   │   ├── network_manager.py
-│   │   ├── open_context_base.py
-│   │   ├── pbjson.py
-│   │   ├── sys_config.py
-│   │   ├── utils.py
-│   │   └── pb                        #Protobuf协议定义及生成文件
-│   │       ├── __init__.py
-│   │       ├── *.proto
-│   │       └── *_pb2.py
-│   ├── examples                      #示例demo
-│   │   ├── __init__.py
-│   │   ├── get_mkt_snapshot_demo.py
-│   │   ├── macd_strategy.py
-│   │   ├── quote_and_trade_demo.py
-│   │   ├── quote_push.py
-│   │   ├── simple_filter_demo.py
-│   │   └── stocksell_demo.py
-│   ├── quote                         #行情相关接口代码
-│   │   ├── __init__.py
-│   │   ├── head.html
-│   │   ├── open_quote_context.py
-│   │   ├── quote_get_warrant.py
-│   │   ├── quote_query.py
-│   │   ├── quote_response_handler.py
-│   │   ├── quote_stockfilter_info.py
-│   │   └── quote_tool.py
-│   ├── trade                         #交易相关接口代码
-│   │   ├── __init__.py
-│   │   ├── open_trade_context.py
-│   │   ├── trade_query.py
-│   │   └── trade_response_handler.py
-│   └── tools                         #工具及代码生成脚本
-│       ├── __init__.py
-│       ├── auto_generate.py
-│       ├── generate_code.py
-│       ├── load_template.py
-│       └── analysis
-│           ├── broker_analysis.py
-│           ├── orderbook_analysis.py
-│           └── ticker_analysis.py
-├── requirements.txt
-└── setup.py
+# Output:
+# {"code":"HK.00700","name":"TENCENT","last_done":436.2,...}
 ```
 
----
+### 2. Analyze Daily Trend
 
-### 使用须知
+```bash
+# Get last 30 days of daily K-line
+nine-futu-cli quote kline -c 700 -k 1d --num 30
 
-- python脚本运行前，需先启动[FutuOpenD](https://openapi.futunn.com/futu-api-doc/quick/opend-base.html)网关客户端
+# Get K-line for specific period
+nine-futu-cli quote kline -c 700 -k 1d -s "2026-04-01" -e "2026-04-30"
+```
 
-### API与FutuOpenD网关客户端的架构
+### 3. Intraday Trading Analysis
 
-![image](https://futunnopen.github.io/futu-api-doc/_images/API.png)
+```bash
+# Get 5-minute K-line for today
+nine-futu-cli quote kline -c 700 -k 5m
 
-***
+# Get 1-minute K-line for specific time range
+nine-futu-cli quote kline -c 700 -k 1m -s "2026-05-28 09:30" -e "2026-05-28 16:00"
+```
 
-### 使用说明
+### 4. Monitor Order Book Depth
 
-* 有任何问题可以到 issues  处提出，我们会及时进行解答。
-* 使用新版本时请先仔细阅读接口文档，大部分问题都可以在接口文档中找到你想要的答案。
-* 欢迎大家提出建议、也可以提出各种需求，我们一定会尽量满足大家的需求。
+```bash
+# Subscribe to order book
+nine-futu-cli subscribe add -c 700 -t ORDER_BOOK
 
----
+# Query subscription status
+nine-futu-cli subscribe list
+```
+
+### 5. Automated Data Collection
+
+```bash
+# Collect daily data for backtesting (NDJSON format)
+nine-futu-cli quote kline -c 700 -k 1d -s "2026-01-01" -e "2026-12-31" --ndjson > data.jsonl
+```
+
+## Commands
+
+### Quote Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `snapshot` | Get market snapshot | `quote snapshot -c 700` |
+| `kline` | Get K-line data | `quote kline -c 700 -k 1d` |
+
+### Subscription Commands
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `subscribe list` | List all subscriptions | `subscribe list` |
+| `subscribe add` | Add subscription | `subscribe add -c 700` |
+| `subscribe remove` | Remove subscription | `subscribe remove -c 700` |
+| `subscribe clear` | Remove all subscriptions | `subscribe clear` |
+
+## Stock Code Format
+
+| Input | Parsed As | Description |
+|-------|-----------|-------------|
+| `700` | `HK.00700` | Numeric → HK stock, padded to 5 digits |
+| `00700` | `HK.00700` | Already 5 digits |
+| `AAPL` | `US.AAPL` | Alphabetic → US stock |
+| `HK.00700` | `HK.00700` | Full code with prefix |
+| `US.AAPL` | `US.AAPL` | Full code with prefix |
+
+## K-line Types
+
+| Flag | Description |
+|------|-------------|
+| `-k 1m` | 1-minute K-line |
+| `-k 5m` | 5-minute K-line |
+| `-k 15m` | 15-minute K-line |
+| `-k 30m` | 30-minute K-line |
+| `-k 60m` | 60-minute K-line |
+| `-k 1d` | Daily K-line |
+| `-k 1w` | Weekly K-line |
+| `-k 1M` | Monthly K-line |
+
+## Subscription Types
+
+| Type | Description |
+|------|-------------|
+| `QUOTE` | Real-time quotes (default) |
+| `ORDER_BOOK` | Order book depth (default) |
+| `TICKER` | Ticker (trades) |
+| `RT_DATA` | Real-time data |
+| `K_1M` | 1-minute K-line |
+| `K_5M` | 5-minute K-line |
+| `K_15M` | 15-minute K-line |
+| `K_30M` | 30-minute K-line |
+| `K_60M` | 60-minute K-line |
+| `K_DAY` | Daily K-line |
+| `K_WEEK` | Weekly K-line |
+| `K_MON` | Monthly K-line |
+| `BROKER` | Broker queue |
+
+## Output Formats
+
+### JSON (default)
+```bash
+$ nine-futu-cli quote snapshot -c 700
+[
+  {
+    "code": "HK.00700",
+    "name": "TENCENT",
+    "last_done": 436.2,
+    ...
+  }
+]
+```
+
+### NDJSON (one JSON per line)
+```bash
+$ nine-futu-cli quote kline -c 700 -k 5m --ndjson
+{"code":"HK.00700","ktype":"5m","date":"2026-05-28","time":"09:35","open":431.0,...}
+{"code":"HK.00700","ktype":"5m","date":"2026-05-28","time":"09:40","open":429.2,...}
+```
+
+## Debug Mode
+
+Add `--debug` to see connection and subscription details:
+
+```bash
+$ nine-futu-cli --debug quote kline -c 700 -k 5m
+[DEBUG] Connecting to 127.0.0.1:11111...
+[DEBUG] Initializing connection...
+[DEBUG] Connected! conn_id=7467121556106515641, server_ver=906
+[DEBUG] Kline: code=HK.00700, ktype=5m, start=, end=
+[DEBUG] Minute mode (all day): start=2026-06-01, end=2026-06-02
+[DEBUG] Got 66 kline bars
+[
+  {"code":"HK.00700",...},
+  ...
+]
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FUTU_HOST` | `127.0.0.1` | FutuOpenD host |
+| `FUTU_PORT` | `11111` | FutuOpenD port |
+
+### Command Line Options
+
+| Option | Description |
+|--------|-------------|
+| `--host <HOST>` | FutuOpenD host |
+| `--port <PORT>` | FutuOpenD port |
+| `--debug` | Enable debug output |
+
+## Installation from Source
+
+```bash
+git clone https://github.com/your-repo/nine-futu.git
+cd nine-futu
+cargo build --release
+cp target/release/nine-futu-cli /usr/local/bin/
+```
+
+## Testing
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with FutuOpenD
+cargo test -- --ignored
+```
+
+## License
+
+Apache License 2.0
