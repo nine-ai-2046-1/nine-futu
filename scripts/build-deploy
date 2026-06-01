@@ -7,10 +7,10 @@ set -e
 echo "Building nine-futu workspace..."
 cargo build --release
 
-echo "Copying nine-futu-cli to ~/.local/bin..."
+echo "Copying nine-futu to ~/.local/bin..."
 mkdir -p ~/.local/bin
-cp target/release/nine-futu-cli ~/.local/bin/
+cp target/release/nine-futu ~/.local/bin/
 
 echo "Done!"
-echo "Binary: ~/.local/bin/nine-futu-cli"
-~/.local/bin/nine-futu-cli --version
+echo "Binary: ~/.local/bin/nine-futu"
+~/.local/bin/nine-futu --version

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use nine_futu::{FutuClient, MarketRegistry};
+use nine_futu_lib::{FutuClient, MarketRegistry};
 
 #[derive(Parser)]
 #[command(name = "nine-futu")]

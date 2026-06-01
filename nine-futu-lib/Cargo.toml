@@ -1,0 +1,23 @@
+[package]
+name = "nine-futu-lib"
+version = "0.1.0"
+edition = "2021"
+description = "Futu OpenD API client library for Rust"
+license = "Apache-2.0"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+prost = "0.13"
+bytes = "1"
+thiserror = "2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aes = "0.8"
+cbc = "0.1"
+rsa = "0.9"
+sha1 = "0.10"
+rand = "0.8"
+
+[build-dependencies]
+prost-build = "0.13"

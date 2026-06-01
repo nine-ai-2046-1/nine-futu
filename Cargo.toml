@@ -1,6 +1,6 @@
 [workspace]
 members = [
+    "nine-futu-lib",
     "nine-futu",
-    "nine-futu-cli",
 ]
 resolver = "2"

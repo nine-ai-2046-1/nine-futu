@@ -2,22 +2,15 @@
 name = "nine-futu"
 version = "0.1.0"
 edition = "2021"
-description = "Futu OpenD API client library for Rust"
+description = "CLI tool for Futu OpenD API"
 license = "Apache-2.0"
 
 [dependencies]
+nine-futu-lib = { path = "../nine-futu-lib" }
 tokio = { version = "1", features = ["full"] }
-prost = "0.13"
-bytes = "1"
-thiserror = "2"
-anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-aes = "0.8"
-cbc = "0.1"
-rsa = "0.9"
-sha1 = "0.10"
-rand = "0.8"
-
-[build-dependencies]
-prost-build = "0.13"
+anyhow = "1"
+colored = "2"
+chrono = "0.4"
