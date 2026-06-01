@@ -1,0 +1,16 @@
+[package]
+name = "nine-futu-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tool for Futu OpenD API"
+license = "Apache-2.0"
+
+[dependencies]
+nine-futu = { path = "../nine-futu" }
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+colored = "2"
+chrono = "0.4"

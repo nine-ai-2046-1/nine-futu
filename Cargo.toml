@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "nine-futu",
+    "nine-futu-cli",
+]
+resolver = "2"
