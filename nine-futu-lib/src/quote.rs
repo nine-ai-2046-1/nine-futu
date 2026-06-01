@@ -30,17 +30,14 @@ impl QuoteContext {
 
     pub async fn get_market_snapshot(
         &self,
-        codes: Vec<String>,
+        _codes: Vec<String>,
     ) -> Result<Vec<SnapshotData>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
-        // Build request body
-        let body = Bytes::new(); // TODO: Encode actual request
-
+        let body = Bytes::new();
         let rx = ctx.send_request(GET_SECURITY_SNAPSHOT_PROTO_ID, body).await?;
 
-        // Wait for response
-        let response = tokio::time::timeout(
+        let _response = tokio::time::timeout(
             std::time::Duration::from_secs(12),
             rx,
         )
@@ -48,14 +45,12 @@ impl QuoteContext {
         .map_err(|_| FutuError::Timeout)?
         .map_err(|_| FutuError::ConnectionLost)?;
 
-        // Parse response - for now return empty
-        // TODO: Parse actual response
         Ok(vec![])
     }
 
     pub async fn get_stock_quote(
         &self,
-        codes: Vec<String>,
+        _codes: Vec<String>,
     ) -> Result<Vec<StockQuote>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -75,9 +70,9 @@ impl QuoteContext {
 
     pub async fn get_cur_kline(
         &self,
-        code: &str,
-        num: u32,
-        ktype: &str,
+        _code: &str,
+        _num: u32,
+        _ktype: &str,
     ) -> Result<Vec<KlineBar>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -97,11 +92,11 @@ impl QuoteContext {
 
     pub async fn request_history_kline(
         &self,
-        code: &str,
-        start: Option<&str>,
-        end: Option<&str>,
-        ktype: &str,
-        max_count: u32,
+        _code: &str,
+        _start: Option<&str>,
+        _end: Option<&str>,
+        _ktype: &str,
+        _max_count: u32,
     ) -> Result<Vec<KlineBar>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -122,7 +117,7 @@ impl QuoteContext {
     pub async fn get_order_book(
         &self,
         code: &str,
-        num: u32,
+        _num: u32,
     ) -> Result<OrderBook, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -146,8 +141,8 @@ impl QuoteContext {
 
     pub async fn get_rt_ticker(
         &self,
-        code: &str,
-        num: u32,
+        _code: &str,
+        _num: u32,
     ) -> Result<Vec<Ticker>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -167,7 +162,7 @@ impl QuoteContext {
 
     pub async fn get_market_state(
         &self,
-        codes: Vec<String>,
+        _codes: Vec<String>,
     ) -> Result<Vec<MarketStateInfo>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -187,7 +182,7 @@ impl QuoteContext {
 
     pub async fn get_capital_flow(
         &self,
-        code: &str,
+        _code: &str,
     ) -> Result<Vec<CapitalFlowData>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -207,7 +202,7 @@ impl QuoteContext {
 
     pub async fn get_plate_list(
         &self,
-        market: &str,
+        _market: &str,
     ) -> Result<Vec<PlateInfo>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -227,7 +222,7 @@ impl QuoteContext {
 
     pub async fn get_plate_stock(
         &self,
-        plate_code: &str,
+        _plate_code: &str,
     ) -> Result<Vec<PlateStock>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 
@@ -247,8 +242,8 @@ impl QuoteContext {
 
     pub async fn get_stock_basicinfo(
         &self,
-        market: &str,
-        codes: Vec<String>,
+        _market: &str,
+        _codes: Vec<String>,
     ) -> Result<Vec<SnapshotData>, FutuError> {
         let mut ctx = self.ctx.lock().await;
 

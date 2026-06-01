@@ -1,6 +1,4 @@
-use bytes::Bytes;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 
 use crate::proto_layer::ProtoResponse;
 use crate::types::*;

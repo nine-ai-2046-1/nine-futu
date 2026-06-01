@@ -1,9 +1,8 @@
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use prost::Message;
-use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
 
 use crate::error::FutuError;
@@ -232,7 +231,7 @@ impl FutuClient {
     /// # Returns
     /// Response from FutuOpenD
     async fn wait_response(&mut self, serial_no: u32) -> Result<ProtoResponse, FutuError> {
-        let (tx, rx) = oneshot::channel();
+        let (tx, _rx) = oneshot::channel();
         self.pending.insert(serial_no, tx);
 
         // Read responses until we get the one we want
