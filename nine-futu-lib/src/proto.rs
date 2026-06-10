@@ -89,3 +89,51 @@ pub mod qot_update_order_book {
 pub mod qot_update_ticker {
     include!(concat!(env!("OUT_DIR"), "/qot_update_ticker.rs"));
 }
+
+pub mod trd_common {
+    include!(concat!(env!("OUT_DIR"), "/trd_common.rs"));
+}
+
+pub mod trd_get_acc_list {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_acc_list.rs"));
+}
+
+pub mod trd_get_funds {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_funds.rs"));
+}
+
+pub mod trd_get_position_list {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_position_list.rs"));
+}
+
+pub mod trd_place_order {
+    include!(concat!(env!("OUT_DIR"), "/trd_place_order.rs"));
+}
+
+pub mod trd_modify_order {
+    include!(concat!(env!("OUT_DIR"), "/trd_modify_order.rs"));
+}
+
+pub mod trd_get_order_list {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_order_list.rs"));
+}
+
+pub mod trd_get_order_fill_list {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_order_fill_list.rs"));
+}
+
+pub mod trd_get_history_order_list {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_history_order_list.rs"));
+}
+
+pub mod trd_get_history_order_fill_list {
+    include!(concat!(env!("OUT_DIR"), "/trd_get_history_order_fill_list.rs"));
+}
+
+pub mod trd_unlock_trade {
+    include!(concat!(env!("OUT_DIR"), "/trd_unlock_trade.rs"));
+}
+
+pub mod trd_sub_acc_push {
+    include!(concat!(env!("OUT_DIR"), "/trd_sub_acc_push.rs"));
+}

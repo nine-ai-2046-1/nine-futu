@@ -9,6 +9,9 @@ A Rust CLI tool for Futu OpenD API, designed for stock traders to quickly access
 - **Subscription Management**: Subscribe/unsubscribe to real-time data streams
 - **JSON & NDJSON Output**: Machine-readable output for automation and scripting
 - **Multi-market Support**: Hong Kong, US, and more markets
+- **Period Calculation**: Auto-set start date with `-p` flag (e.g., `-p 30` for last 30 days)
+- **Delayed Output**: Add delay between NDJSON outputs with `--delay` flag
+- **CLI Integration**: Call external tools (nine-stock) for each K-line bar with `--cli` flag
 
 ## Quick Start
 
@@ -27,71 +30,88 @@ A Rust CLI tool for Futu OpenD API, designed for stock traders to quickly access
 
 ```bash
 # Get stock snapshot
-nine-futu-cli quote snapshot -c 700
+nine-futu quote snapshot -c 700
 
 # Get daily K-line (last 10 bars)
-nine-futu-cli quote kline -c 700 -k 1d
+nine-futu quote kline -c 700 -k 1d
 
 # Get 5-minute K-line for today
-nine-futu-cli quote kline -c 700 -k 5m
+nine-futu quote kline -c 700 -k 5m
 
 # Get K-line for specific date
-nine-futu-cli quote kline -c 700 -k 5m -s "2026-05-28" -e "2026-05-28"
+nine-futu quote kline -c 700 -k 5m -s "2026-05-28" -e "2026-05-28"
 
 # JSON output
-nine-futu-cli quote snapshot -c 700 --json
+nine-futu quote snapshot -c 700 --json
 
 # NDJSON output (one JSON per line)
-nine-futu-cli quote kline -c 700 -k 5m --ndjson
+nine-futu quote kline -c 700 -k 5m
 ```
 
-## Use Cases for Stock Traders
+## Use Cases
 
-### 1. Check Stock Price Before Trading
+### 1. Quick Price Check
 
 ```bash
-# Quick check current price
-nine-futu-cli quote snapshot -c 700
-
-# Output:
-# {"code":"HK.00700","name":"TENCENT","last_done":436.2,...}
+nine-futu quote snapshot -c 700
+# Output: {"code":"HK.00700","name":"TENCENT","last_done":436.2,...}
 ```
 
-### 2. Analyze Daily Trend
+### 2. Daily Trend Analysis
 
 ```bash
-# Get last 30 days of daily K-line
-nine-futu-cli quote kline -c 700 -k 1d --num 30
+# Last 30 days of daily K-line
+nine-futu quote kline -c 700 -k 1d -p 30
 
-# Get K-line for specific period
-nine-futu-cli quote kline -c 700 -k 1d -s "2026-04-01" -e "2026-04-30"
+# Specific date range
+nine-futu quote kline -c 700 -k 1d -s "2026-04-01" -e "2026-04-30"
 ```
 
-### 3. Intraday Trading Analysis
+### 3. Intraday Analysis
 
 ```bash
-# Get 5-minute K-line for today
-nine-futu-cli quote kline -c 700 -k 5m
+# Today's 5-minute K-line
+nine-futu quote kline -c 700 -k 5m
 
-# Get 1-minute K-line for specific time range
-nine-futu-cli quote kline -c 700 -k 1m -s "2026-05-28 09:30" -e "2026-05-28 16:00"
+# Specific time range
+nine-futu quote kline -c 700 -k 1m -s "2026-05-28 09:30" -e "2026-05-28 16:00"
 ```
 
-### 4. Monitor Order Book Depth
+### 4. Data Export for Backtesting
 
 ```bash
-# Subscribe to order book
-nine-futu-cli subscribe add -c 700 -t ORDER_BOOK
-
-# Query subscription status
-nine-futu-cli subscribe list
+# Export daily data to file
+nine-futu quote kline -c 700 -k 1d -p 365 --ndjson > data.jsonl
 ```
 
-### 5. Automated Data Collection
+### 5. Delayed Output (Real-time Simulation)
 
 ```bash
-# Collect daily data for backtesting (NDJSON format)
-nine-futu-cli quote kline -c 700 -k 1d -s "2026-01-01" -e "2026-12-31" --ndjson > data.jsonl
+# Output 5m bars with 60-second delay between each
+nine-futu quote kline -c 700 -k 5m -p 7 --delay 60
+```
+
+### 6. CLI Integration (Call External Tool)
+
+```bash
+# Call nine-stock for each K-line bar
+nine-futu quote kline -c 700 -k 5m -p 30 --cli "session-123"
+
+# Subscription with CLI callback
+nine-futu sub -c 700 -t 5m --cli "my-session"
+```
+
+### 7. Background Subscription
+
+```bash
+# Start subscription daemon
+nine-futu sub -c 700 -t 5m
+
+# Check running processes
+nine-futu process list
+
+# Stop a daemon
+nine-futu process stop <PID>
 ```
 
 ## Commands
@@ -103,14 +123,129 @@ nine-futu-cli quote kline -c 700 -k 1d -s "2026-01-01" -e "2026-12-31" --ndjson 
 | `snapshot` | Get market snapshot | `quote snapshot -c 700` |
 | `kline` | Get K-line data | `quote kline -c 700 -k 1d` |
 
+### K-line Flags
+
+| Flag | Description | Example |
+|------|-------------|---------|
+| `-p <days>` | Period: auto-set start date to N days before today | `-p 30` |
+| `--delay <sec>` | Delay between NDJSON outputs | `--delay 60` |
+| `--cli <session>` | Call external CLI for each bar | `--cli "session-123"` |
+| `--json` | Output as JSON array (default: NDJSON) | `--json` |
+
 ### Subscription Commands
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `subscribe list` | List all subscriptions | `subscribe list` |
-| `subscribe add` | Add subscription | `subscribe add -c 700` |
-| `subscribe remove` | Remove subscription | `subscribe remove -c 700` |
-| `subscribe clear` | Remove all subscriptions | `subscribe clear` |
+| `sub` | Start subscription (daemon by default) | `sub -c 700 -t 5m` |
+| `sub -f` | Start subscription (foreground) | `sub -c 700 -t 5m -f` |
+| `process list` | List running daemons | `process list` |
+| `process status <code>` | Check subscription status | `process status 700` |
+| `process stop <pid>` | Stop a daemon | `process stop 12345` |
+
+### Subscription Flags
+
+| Flag | Description | Example |
+|------|-------------|---------|
+| `-t <timeframe>` | K-line timeframe (default: 5m) | `-t 15m` |
+| `-f` | Run in foreground (default: daemon) | `-f` |
+| `--cli <session>` | Call external CLI for each K-line bar | `--cli "session-123"` |
+
+## Trade Commands
+
+### Buy/Sell Orders
+
+```bash
+# Buy limit order with stop loss and take profit
+nine-futu trade buy limit -c 700 -q 100 -p 430 -sl 400 -tp 460
+
+# Buy market order
+nine-futu trade buy market -c 700 -q 100
+
+# Sell limit order
+nine-futu trade sell limit -c 700 -q 100 -p 450
+
+# Auto-confirm (skip confirmation prompt)
+nine-futu trade buy limit -c 700 -q 100 -p 430 -y
+
+# Use real trading (requires config enabled)
+nine-futu trade buy limit -c 700 -q 100 -p 430 --real
+
+# Use margin account
+nine-futu trade buy limit -c 700 -q 100 -p 430 --margin
+```
+
+### Modify/Cancel Orders
+
+```bash
+# Modify order price
+nine-futu trade modify -oi 12345 -p 435
+
+# Cancel order
+nine-futu trade cancel -oi 12345
+```
+
+### Account & Position
+
+```bash
+# List trading accounts
+nine-futu trade accounts
+
+# Get account funds
+nine-futu trade funds
+
+# List positions
+nine-futu trade positions
+
+# List orders
+nine-futu trade orders
+
+# List trades
+nine-futu trade trades
+```
+
+### Trade Environment
+
+| Input | Meaning |
+|-------|---------|
+| `--sim` | Simulated trading (default) |
+| `--real` | Real trading (requires config) |
+| `--margin` | Margin account |
+| `-y` | Auto-confirm order |
+
+### Order Status Values
+
+| Status | Description |
+|--------|-------------|
+| Submitted | Order submitted |
+| Filled | Order fully filled |
+| Partially Filled | Order partially filled |
+| Cancelled | Order cancelled |
+| Failed | Order failed |
+
+## CLI Integration
+
+When using `--cli`, nine-futu calls an external CLI tool for each K-line bar:
+
+```bash
+nine-futu quote kline -c 700 -k 5m -p 30 --cli "session-123"
+```
+
+This spawns a subprocess for each bar:
+```bash
+nine-stock --session "session-123" --code "HK.00700" --ktype "5m" --data '{"code":"HK.00700",...}'
+```
+
+### Dependencies for --cli
+
+The `--cli` feature requires additional tools to be installed:
+
+| Tool | Repository | Description |
+|------|------------|-------------|
+| [nine-stock](https://github.com/nine-ai-2026-1/nine-stock) | github.com/nine-ai-2026-1/nine-stock | Analyzes K-line data and sends reports |
+| [nine-poe](https://github.com/nine-ai-2026-1/nine-poe) | github.com/nine-ai-2026-1/nine-poe | AI-powered analysis engine (required by nine-stock) |
+| opencb | (messaging tool) | Sends reports to users (required by nine-stock) |
+
+**Note**: These tools are only required when using the `--cli` flag. The core nine-futu functionality works without them.
 
 ## Stock Code Format
 
@@ -155,9 +290,16 @@ nine-futu-cli quote kline -c 700 -k 1d -s "2026-01-01" -e "2026-12-31" --ndjson 
 
 ## Output Formats
 
-### JSON (default)
+### NDJSON (default)
 ```bash
-$ nine-futu-cli quote snapshot -c 700
+$ nine-futu quote kline -c 700 -k 5m
+{"code":"HK.00700","ktype":"5m","date":"2026-06-07","time":"09:35","open":431.0,...}
+{"code":"HK.00700","ktype":"5m","date":"2026-06-07","time":"09:40","open":429.2,...}
+```
+
+### JSON Array
+```bash
+$ nine-futu quote snapshot -c 700 --json
 [
   {
     "code": "HK.00700",
@@ -168,32 +310,35 @@ $ nine-futu-cli quote snapshot -c 700
 ]
 ```
 
-### NDJSON (one JSON per line)
-```bash
-$ nine-futu-cli quote kline -c 700 -k 5m --ndjson
-{"code":"HK.00700","ktype":"5m","date":"2026-05-28","time":"09:35","open":431.0,...}
-{"code":"HK.00700","ktype":"5m","date":"2026-05-28","time":"09:40","open":429.2,...}
-```
-
 ## Debug Mode
 
 Add `--debug` to see connection and subscription details:
 
 ```bash
-$ nine-futu-cli --debug quote kline -c 700 -k 5m
+$ nine-futu --debug quote kline -c 700 -k 5m
 [DEBUG] Connecting to 127.0.0.1:11111...
 [DEBUG] Initializing connection...
 [DEBUG] Connected! conn_id=7467121556106515641, server_ver=906
-[DEBUG] Kline: code=HK.00700, ktype=5m, start=, end=
-[DEBUG] Minute mode (all day): start=2026-06-01, end=2026-06-02
-[DEBUG] Got 66 kline bars
-[
-  {"code":"HK.00700",...},
-  ...
-]
 ```
 
 ## Configuration
+
+### Config File
+
+Location: `~/.opens/nine-futu/config.toml`
+
+```toml
+[account]
+account_id = ""                    # Your Futu account ID
+password = ""                      # Password (optional)
+real_trade_enabled = false         # Enable real trading
+default_trade_env = "SIMULATE"     # Default: SIMULATE or REAL
+default_account_type = "CASH"      # Default: CASH or MARGIN
+
+[connection]
+host = "127.0.0.1"                # FutuOpenD host
+port = 11111                       # FutuOpenD port
+```
 
 ### Environment Variables
 
@@ -210,13 +355,21 @@ $ nine-futu-cli --debug quote kline -c 700 -k 5m
 | `--port <PORT>` | FutuOpenD port |
 | `--debug` | Enable debug output |
 
-## Installation from Source
+## Installation
+
+### From Source
 
 ```bash
-git clone https://github.com/your-repo/nine-futu.git
+git clone https://github.com/nine-ai-2026-1/nine-futu.git
 cd nine-futu
 cargo build --release
-cp target/release/nine-futu-cli /usr/local/bin/
+cp target/release/nine-futu /usr/local/bin/
+```
+
+### Using Build Script
+
+```bash
+./scripts/build-deploy
 ```
 
 ## Testing

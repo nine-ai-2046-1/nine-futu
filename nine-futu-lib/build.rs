@@ -23,6 +23,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "proto/Qot_UpdateKL.proto",
         "proto/Qot_UpdateOrderBook.proto",
         "proto/Qot_UpdateTicker.proto",
+        "proto/Trd_Common.proto",
+        "proto/Trd_GetAccList.proto",
+        "proto/Trd_GetFunds.proto",
+        "proto/Trd_GetPositionList.proto",
+        "proto/Trd_PlaceOrder.proto",
+        "proto/Trd_ModifyOrder.proto",
+        "proto/Trd_GetOrderList.proto",
+        "proto/Trd_GetOrderFillList.proto",
+        "proto/Trd_GetHistoryOrderList.proto",
+        "proto/Trd_GetHistoryOrderFillList.proto",
+        "proto/Trd_UnlockTrade.proto",
+        "proto/Trd_SubAccPush.proto",
     ];
 
     let mut config = prost_build::Config::new();

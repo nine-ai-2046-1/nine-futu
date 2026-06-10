@@ -1,5 +1,6 @@
 use bytes::{BufMut, BytesMut};
 use prost::Message;
+use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
@@ -7,18 +8,20 @@ use tokio::time::Duration;
 
 use crate::error::FutuError;
 use crate::proto_layer::{FutuHeader, ProtoResponse, SerialManager, HEADER_SIZE, is_push_proto_id};
+use crate::types::SubType;
 
 /// Futu OpenD API client
 ///
 /// This client connects to a FutuOpenD gateway and provides methods
 /// to query market data and manage subscriptions.
 pub struct FutuClient {
-    stream: TcpStream,
-    serial_mgr: SerialManager,
+    stream: Arc<tokio::sync::Mutex<TcpStream>>,
+    pub serial_mgr: SerialManager,
     recv_buf: BytesMut,
     pending: std::collections::HashMap<u32, oneshot::Sender<ProtoResponse>>,
     push_tx: Option<mpsc::UnboundedSender<ProtoResponse>>,
-    conn_id: u64,
+    push_rx: Option<mpsc::UnboundedReceiver<ProtoResponse>>,
+    pub conn_id: u64,
     aes_key: String,
     last_recv_time: std::time::Instant,
     debug: bool,
@@ -42,14 +45,15 @@ impl FutuClient {
         let stream = TcpStream::connect(&addr).await?;
         stream.set_nodelay(true)?;
 
-        let (push_tx, _push_rx) = mpsc::unbounded_channel();
+        let (push_tx, push_rx) = mpsc::unbounded_channel();
 
         Ok(Self {
-            stream,
+            stream: Arc::new(tokio::sync::Mutex::new(stream)),
             serial_mgr: SerialManager::new(),
             recv_buf: BytesMut::with_capacity(1024 * 1024),
             pending: std::collections::HashMap::new(),
             push_tx: Some(push_tx),
+            push_rx: Some(push_rx),
             conn_id: 0,
             aes_key: String::new(),
             last_recv_time: std::time::Instant::now(),
@@ -206,7 +210,7 @@ impl FutuClient {
     ///
     /// # Returns
     /// Serial number for matching response
-    async fn send_request(&mut self, proto_id: u32, body: Vec<u8>) -> Result<u32, FutuError> {
+    pub async fn send_request(&mut self, proto_id: u32, body: Vec<u8>) -> Result<u32, FutuError> {
         let serial_no = self.serial_mgr.next();
 
         // Build header with SHA1 hash
@@ -218,7 +222,8 @@ impl FutuClient {
         packet.put_slice(&body);
 
         // Send
-        self.stream.write_all(&packet).await?;
+        let mut stream = self.stream.lock().await;
+        stream.write_all(&packet).await?;
 
         Ok(serial_no)
     }
@@ -230,7 +235,7 @@ impl FutuClient {
     ///
     /// # Returns
     /// Response from FutuOpenD
-    async fn wait_response(&mut self, serial_no: u32) -> Result<ProtoResponse, FutuError> {
+    pub async fn wait_response(&mut self, serial_no: u32) -> Result<ProtoResponse, FutuError> {
         let (tx, _rx) = oneshot::channel();
         self.pending.insert(serial_no, tx);
 
@@ -239,10 +244,13 @@ impl FutuClient {
             // Read more data if buffer is small
             if self.recv_buf.len() < HEADER_SIZE {
                 let mut buf = [0u8; 65536];
-                let read_result = tokio::time::timeout(
-                    Duration::from_secs(12),
-                    self.stream.read(&mut buf),
-                ).await;
+                let read_result = {
+                    let mut stream = self.stream.lock().await;
+                    tokio::time::timeout(
+                        Duration::from_secs(12),
+                        stream.read(&mut buf),
+                    ).await
+                };
 
                 let n = match read_result {
                     Ok(Ok(n)) => n,
@@ -266,7 +274,8 @@ impl FutuClient {
                 if self.recv_buf.len() < header.body_len as usize {
                     // Need more data
                     let mut body_buf = vec![0u8; header.body_len as usize - self.recv_buf.len()];
-                    self.stream.read_exact(&mut body_buf).await?;
+                    let mut stream = self.stream.lock().await;
+                    stream.read_exact(&mut body_buf).await?;
                     self.recv_buf.extend_from_slice(&body_buf);
                 }
 
@@ -296,18 +305,18 @@ impl FutuClient {
     pub async fn get_cur_kline(&mut self, code: &str, ktype: &str, num: u32) -> Result<Vec<crate::types::KlineBar>, FutuError> {
         // First subscribe to the stock with the correct K-line type
         let sub_type = match ktype {
-            "1m" => "K_1M",
-            "3m" => "K_3M",
-            "5m" => "K_5M",
-            "15m" => "K_15M",
-            "30m" => "K_30M",
-            "60m" => "K_60M",
-            "1d" => "K_DAY",
-            "1w" => "K_WEEK",
-            "1M" => "K_MON",
-            _ => "K_DAY",
+            "1m" => SubType::K1M,
+            "3m" => SubType::K3M,
+            "5m" => SubType::K5M,
+            "15m" => SubType::K15M,
+            "30m" => SubType::K30M,
+            "60m" => SubType::K60M,
+            "1d" => SubType::KDay,
+            "1w" => SubType::KWeek,
+            "1M" => SubType::KMon,
+            _ => SubType::KDay,
         };
-        self.subscribe(code, sub_type).await?;
+        self.subscribe(code, vec![sub_type]).await?;
 
         // Get K-line data
         use crate::proto::qot_get_kl::{Request, C2s};
@@ -651,8 +660,14 @@ impl FutuClient {
     /// # Arguments
     /// * `code` - Stock code (e.g., "HK.00700")
     /// * `sub_type` - Subscription type (e.g., "QUOTE", "ORDER_BOOK", "K_5M")
-    async fn subscribe(&mut self, code: &str, sub_type: &str) -> Result<(), FutuError> {
-        use crate::proto::qot_sub::{Request, C2s};
+
+    /// Subscribe to real-time data for a stock
+    ///
+    /// # Arguments
+    /// * `code` - Stock code (e.g., "HK.00700")
+    /// * `sub_types` - List of subscription types
+    pub async fn subscribe(&mut self, code: &str, sub_types: Vec<crate::types::SubType>) -> Result<(), FutuError> {
+        use crate::proto::qot_sub::{Request as SubRequest, C2s as SubC2s};
         use crate::proto::qot_common::Security;
 
         let parts: Vec<&str> = code.splitn(2, '.').collect();
@@ -671,39 +686,29 @@ impl FutuClient {
             _ => return Err(FutuError::ParamErr(format!("Unknown market: {}", parts[0]))),
         };
 
-        let sub_type_id = match sub_type {
-            "QUOTE" => 1,
-            "ORDER_BOOK" => 2,
-            "TICKER" => 4,
-            "RT_DATA" => 5,
-            "K_DAY" => 6,
-            "K_5M" => 7,
-            "K_15M" => 8,
-            "K_30M" => 9,
-            "K_60M" => 10,
-            "K_1M" => 11,
-            "K_WEEK" => 12,
-            "K_MON" => 13,
-            _ => return Err(FutuError::ParamErr(format!("Invalid sub_type: {}", sub_type))),
-        };
+        let security_list = vec![Security {
+            market,
+            code: parts[1].to_string(),
+        }];
 
-        let c2s = C2s {
-            security_list: vec![Security {
-                market,
-                code: parts[1].to_string(),
-            }],
-            sub_type_list: vec![sub_type_id],
+        let sub_type_list: Vec<i32> = sub_types.iter().map(|st| st.to_proto_value()).collect();
+
+        let c2s = SubC2s {
+            security_list,
+            sub_type_list,
             is_sub_or_un_sub: true,
             is_first_push: Some(true),
             ..Default::default()
         };
 
-        let request = Request { c2s };
+        let request = SubRequest { c2s };
         let mut body = Vec::new();
         request.encode(&mut body)?;
 
-        // Send request (proto_id = 3001 for Sub)
+        // Send request (proto_id = 3001)
         let serial_no = self.send_request(3001, body).await?;
+
+        // Wait for response
         let response = self.wait_response(serial_no).await?;
 
         // Parse response
@@ -717,7 +722,82 @@ impl FutuClient {
             });
         }
 
+        if self.debug {
+            eprintln!("[DEBUG] Subscribed to {} with {} types", code, sub_types.len());
+        }
+
         Ok(())
+    }
+
+    /// Start a background task to read push data
+    ///
+    /// This spawns a task that continuously reads from the socket and routes
+    /// push data to the channel. Returns a JoinHandle for the task.
+    pub fn start_push_reader(
+        stream: Arc<tokio::sync::Mutex<TcpStream>>,
+        push_tx: mpsc::UnboundedSender<ProtoResponse>,
+    ) -> tokio::task::JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut recv_buf = BytesMut::with_capacity(1024 * 1024);
+            let mut buf = [0u8; 65536];
+
+            loop {
+                // Read from socket
+                let n = {
+                    let mut stream = stream.lock().await;
+                    match stream.read(&mut buf).await {
+                        Ok(n) => n,
+                        Err(_) => break,
+                    }
+                };
+
+                if n == 0 {
+                    break; // Connection closed
+                }
+
+                recv_buf.extend_from_slice(&buf[..n]);
+
+                // Parse all complete messages
+                while recv_buf.len() >= HEADER_SIZE {
+                    // Peek at header to get body length
+                    let header = match FutuHeader::parse(&mut recv_buf) {
+                        Ok(h) => h,
+                        Err(_) => break,
+                    };
+
+                    // Check if we have enough body
+                    if recv_buf.len() < header.body_len as usize {
+                        break;
+                    }
+
+                    let body = recv_buf.split_to(header.body_len as usize).freeze();
+
+                    // Send push data to channel
+                    if is_push_proto_id(header.proto_id) {
+                        let response = ProtoResponse { header, body };
+                        let _ = push_tx.send(response);
+                    }
+                }
+            }
+        })
+    }
+
+    /// Get a receiver for push data
+    ///
+    /// Returns an unbounded receiver that will receive push data from the gateway.
+    /// This is used for subscribing to real-time data streams.
+    pub fn get_push_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<ProtoResponse>> {
+        self.push_rx.take()
+    }
+
+    /// Get a clone of the stream for background reading
+    pub fn get_stream(&self) -> Arc<tokio::sync::Mutex<TcpStream>> {
+        self.stream.clone()
+    }
+
+    /// Get a sender for push data
+    pub fn get_push_sender(&self) -> Option<mpsc::UnboundedSender<ProtoResponse>> {
+        self.push_tx.clone()
     }
 }
 
@@ -800,7 +880,7 @@ mod tests {
         let mut client = FutuClient::connect("127.0.0.1", 11111, false).await.unwrap();
         client.init_connect().await.unwrap();
         
-        let result = client.subscribe("HK.00700", "QUOTE").await;
+        let result = client.subscribe("HK.00700", vec![SubType::Quote]).await;
         assert!(result.is_ok(), "subscribe failed: {:?}", result.err());
     }
 

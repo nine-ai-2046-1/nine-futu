@@ -1,9 +1,12 @@
 use bytes::Bytes;
+use prost::Message;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::context::ConnectionContext;
 use crate::error::FutuError;
+use crate::proto::qot_sub::{Request as SubRequest, C2s as SubC2s};
+use crate::proto::qot_common::Security;
 use crate::types::*;
 
 pub const SUBSCRIBE_PROTO_ID: u32 = 3001;
@@ -29,10 +32,45 @@ impl SubscriptionContext {
     ) -> Result<(), FutuError> {
         let mut ctx = self.ctx.lock().await;
 
-        // Build request body
-        let body = Bytes::new(); // TODO: Encode actual request
+        // Build security list from codes
+        let security_list: Vec<Security> = codes.iter().filter_map(|code| {
+            let parts: Vec<&str> = code.splitn(2, '.').collect();
+            if parts.len() != 2 {
+                return None;
+            }
+            let market = match parts[0] {
+                "HK" => 1,
+                "US" => 2,
+                "SH" => 3,
+                "SZ" => 4,
+                "SG" => 5,
+                "JP" => 6,
+                "CC" => 19,
+                _ => return None,
+            };
+            Some(Security {
+                market,
+                code: parts[1].to_string(),
+            })
+        }).collect();
 
-        let rx = ctx.send_request(SUBSCRIBE_PROTO_ID, body).await?;
+        // Build sub_type list
+        let sub_type_list: Vec<i32> = sub_types.iter().map(|st| st.to_proto_value()).collect();
+
+        // Build protobuf request
+        let c2s = SubC2s {
+            security_list,
+            sub_type_list,
+            is_sub_or_un_sub: true,
+            is_first_push: Some(true),
+            ..Default::default()
+        };
+
+        let request = SubRequest { c2s };
+        let mut body = Vec::new();
+        request.encode(&mut body)?;
+
+        let rx = ctx.send_request(SUBSCRIBE_PROTO_ID, Bytes::from(body)).await?;
 
         // Wait for response
         let _response = tokio::time::timeout(
@@ -64,8 +102,43 @@ impl SubscriptionContext {
     ) -> Result<(), FutuError> {
         let mut ctx = self.ctx.lock().await;
 
-        let body = Bytes::new();
-        let rx = ctx.send_request(SUBSCRIBE_PROTO_ID, body).await?;
+        // Build security list
+        let security_list: Vec<Security> = codes.iter().filter_map(|code| {
+            let parts: Vec<&str> = code.splitn(2, '.').collect();
+            if parts.len() != 2 {
+                return None;
+            }
+            let market = match parts[0] {
+                "HK" => 1,
+                "US" => 2,
+                "SH" => 3,
+                "SZ" => 4,
+                "SG" => 5,
+                "JP" => 6,
+                "CC" => 19,
+                _ => return None,
+            };
+            Some(Security {
+                market,
+                code: parts[1].to_string(),
+            })
+        }).collect();
+
+        let sub_type_list: Vec<i32> = sub_types.iter().map(|st| st.to_proto_value()).collect();
+
+        let c2s = SubC2s {
+            security_list,
+            sub_type_list,
+            is_sub_or_un_sub: false, // false = unsubscribe
+            is_first_push: Some(true),
+            ..Default::default()
+        };
+
+        let request = SubRequest { c2s };
+        let mut body = Vec::new();
+        request.encode(&mut body)?;
+
+        let rx = ctx.send_request(SUBSCRIBE_PROTO_ID, Bytes::from(body)).await?;
 
         let _response = tokio::time::timeout(
             std::time::Duration::from_secs(12),
@@ -90,8 +163,19 @@ impl SubscriptionContext {
     pub async fn unsubscribe_all(&mut self) -> Result<(), FutuError> {
         let mut ctx = self.ctx.lock().await;
 
-        let body = Bytes::new();
-        let rx = ctx.send_request(SUBSCRIBE_PROTO_ID, body).await?;
+        let c2s = SubC2s {
+            security_list: vec![],
+            sub_type_list: vec![],
+            is_sub_or_un_sub: false,
+            is_unsub_all: Some(true),
+            ..Default::default()
+        };
+
+        let request = SubRequest { c2s };
+        let mut body = Vec::new();
+        request.encode(&mut body)?;
+
+        let rx = ctx.send_request(SUBSCRIBE_PROTO_ID, Bytes::from(body)).await?;
 
         let _response = tokio::time::timeout(
             std::time::Duration::from_secs(12),
@@ -132,6 +216,10 @@ impl SubscriptionContext {
     pub fn subscription_count(&self) -> usize {
         self.subscriptions.len()
     }
+
+    pub fn get_subscriptions(&self) -> &[SubscriptionInfo] {
+        &self.subscriptions
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +228,6 @@ mod tests {
 
     #[test]
     fn test_subscription_tracking() {
-        // Test local subscription tracking
         let mut subs = Vec::new();
         subs.push(SubscriptionInfo {
             code: "HK.00700".to_string(),

@@ -118,23 +118,23 @@ impl SubType {
     /// Get proto value for this subscription type
     pub fn to_proto_value(&self) -> i32 {
         match self {
-            Self::Quote => 1,
-            Self::OrderBook => 2,
-            Self::Ticker => 3,
-            Self::K1M => 4,
-            Self::K3M => 5,
-            Self::K5M => 6,
-            Self::K10M => 7,
-            Self::K15M => 8,
-            Self::K30M => 9,
-            Self::K60M => 10,
-            Self::KDay => 11,
-            Self::KWeek => 12,
-            Self::KMon => 13,
-            Self::KQuarter => 14,
-            Self::KYear => 15,
-            Self::RtData => 16,
-            Self::Broker => 17,
+            Self::Quote => 1,      // SubType_Basic
+            Self::OrderBook => 2,  // SubType_OrderBook
+            Self::Ticker => 4,     // SubType_Ticker
+            Self::RtData => 5,     // SubType_RT
+            Self::KDay => 6,       // SubType_KL_Day
+            Self::K5M => 7,        // SubType_KL_5Min
+            Self::K15M => 8,       // SubType_KL_15Min
+            Self::K30M => 9,       // SubType_KL_30Min
+            Self::K60M => 10,      // SubType_KL_60Min
+            Self::K1M => 11,       // SubType_KL_1Min
+            Self::KWeek => 12,     // SubType_KL_Week
+            Self::KMon => 13,      // SubType_KL_Month
+            Self::Broker => 14,    // SubType_Broker
+            Self::KQuarter => 15,  // SubType_KL_Qurater
+            Self::KYear => 16,     // SubType_KL_Year
+            Self::K3M => 17,       // SubType_KL_3Min
+            Self::K10M => 17,      // Map to 3Min (closest)
             Self::PriceReminder => 19,
         }
     }
@@ -359,4 +359,38 @@ pub struct SubscriptionInfo {
     pub sub_type: SubType,
     /// Whether currently subscribed
     pub is_subscribed: bool,
+}
+
+/// Real-time data (time frame)
+#[derive(Debug, Clone, Serialize)]
+pub struct RtData {
+    /// Stock code with market prefix
+    pub code: String,
+    /// Time string
+    pub time: String,
+    /// Current price
+    pub price: f64,
+    /// Last close price
+    pub prev_close_price: f64,
+    /// Average price
+    pub avg_price: f64,
+    /// Trading volume
+    pub volume: i64,
+    /// Trading turnover
+    pub turnover: f64,
+}
+
+/// Broker queue data
+#[derive(Debug, Clone, Serialize)]
+pub struct BrokerQueue {
+    /// Stock code with market prefix
+    pub code: String,
+    /// Broker ID
+    pub broker_id: i32,
+    /// Broker name
+    pub broker_name: String,
+    /// Buy volume
+    pub buy_volume: i64,
+    /// Sell volume
+    pub sell_volume: i64,
 }
