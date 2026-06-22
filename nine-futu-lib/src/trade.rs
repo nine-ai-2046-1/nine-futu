@@ -171,6 +171,7 @@ impl TradeClient {
             acc_type: acc.acc_type,
             card_num: acc.card_num.clone().unwrap_or_default(),
             security_firm: format!("{:?}", acc.security_firm()),
+            trd_market_auth_list: acc.trd_market_auth_list.clone(),
         }).collect();
         
         Ok(accounts)
@@ -246,7 +247,7 @@ impl TradeClient {
         
         let market = match parts[0] {
             "HK" => 1,
-            "US" => 2,
+            "US" => 11,
             "SH" => 3,
             "SZ" => 4,
             "SG" => 5,
@@ -413,6 +414,7 @@ pub struct AccountInfo {
     pub acc_type: Option<i32>,
     pub card_num: String,
     pub security_firm: String,
+    pub trd_market_auth_list: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Serialize)]

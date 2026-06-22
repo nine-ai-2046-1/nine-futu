@@ -40,7 +40,7 @@ impl SubscriptionContext {
             }
             let market = match parts[0] {
                 "HK" => 1,
-                "US" => 2,
+                "US" => 11,
                 "SH" => 3,
                 "SZ" => 4,
                 "SG" => 5,
@@ -110,7 +110,7 @@ impl SubscriptionContext {
             }
             let market = match parts[0] {
                 "HK" => 1,
-                "US" => 2,
+                "US" => 11,
                 "SH" => 3,
                 "SZ" => 4,
                 "SG" => 5,

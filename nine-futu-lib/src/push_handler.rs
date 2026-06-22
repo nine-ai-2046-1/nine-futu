@@ -59,15 +59,21 @@ impl PushDataHandler {
     }
 
     pub async fn run(&mut self) {
-        let today = Local::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        eprintln!("[DEBUG] PushDataHandler started, waiting for data...");
 
         while let Some(response) = self.rx.recv().await {
             let proto_id = response.header.proto_id;
+
+            eprintln!("[DEBUG] Received push data: proto_id={}, body_len={}", proto_id, response.body.len());
 
             if let Some(push_data) = self.parse_push_data(proto_id, response) {
                 // Get code and determine storage path
                 let code = DataParser::extract_code(&push_data).to_string();
                 let data_type = DataParser::data_type_name(&push_data).to_string();
+
+                eprintln!("[DEBUG] Parsed push data: code={}, type={}", code, data_type);
 
                 // Determine file path based on data type
                 let path = if data_type == "kline" {
@@ -76,10 +82,14 @@ impl PushDataHandler {
                     self.storage.get_data_path(&code, &today, &data_type)
                 };
 
+                eprintln!("[DEBUG] Storage path: {:?}", path);
+
                 // Convert to JSON and store
                 if let Ok(json) = DataParser::to_json(&push_data) {
                     if let Err(e) = self.storage.append_line(&path, &json) {
-                        eprintln!("Failed to write data: {}", e);
+                        eprintln!("[DEBUG] Failed to write data: {}", e);
+                    } else {
+                        eprintln!("[DEBUG] Stored data to {:?}", path);
                     }
                 }
 
@@ -129,7 +139,7 @@ impl PushDataHandler {
                             let security = basic_qot.security;
                             let market_str = match security.market {
                                 1 => "HK",
-                                2 => "US",
+                                11 => "US",
                                 3 => "SH",
                                 4 => "SZ",
                                 5 => "SG",
@@ -164,7 +174,7 @@ impl PushDataHandler {
                         let security = s2c.security;
                         let market_str = match security.market {
                             1 => "HK",
-                            2 => "US",
+                            11 => "US",
                             3 => "SH",
                             4 => "SZ",
                             5 => "SG",
@@ -196,7 +206,7 @@ impl PushDataHandler {
                         let security = s2c.security;
                         let market_str = match security.market {
                             1 => "HK",
-                            2 => "US",
+                            11 => "US",
                             3 => "SH",
                             4 => "SZ",
                             5 => "SG",
@@ -233,7 +243,7 @@ impl PushDataHandler {
                         let security = s2c.security;
                         let market_str = match security.market {
                             1 => "HK",
-                            2 => "US",
+                            11 => "US",
                             3 => "SH",
                             4 => "SZ",
                             5 => "SG",

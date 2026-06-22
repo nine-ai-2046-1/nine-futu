@@ -124,7 +124,7 @@ impl FutuClient {
             }
             let market = match parts[0] {
                 "HK" => 1,
-                "US" => 2,
+                "US" => 11,
                 "SH" => 3,
                 "SZ" => 4,
                 "SG" => 5,
@@ -329,7 +329,7 @@ impl FutuClient {
 
         let market = match parts[0] {
             "HK" => 1,
-            "US" => 2,
+            "US" => 11,
             "SH" => 3,
             "SZ" => 4,
             "SG" => 5,
@@ -418,6 +418,7 @@ impl FutuClient {
         start_time: Option<&str>,
         end_date: Option<&str>,
         end_time: Option<&str>,
+        extended_time: bool,
     ) -> Result<Vec<crate::types::KlineBar>, FutuError> {
         use crate::proto::qot_request_history_kl::{Request, C2s};
         use crate::proto::qot_common::Security;
@@ -429,7 +430,7 @@ impl FutuClient {
 
         let market = match parts[0] {
             "HK" => 1,
-            "US" => 2,
+            "US" => 11,
             "SH" => 3,
             "SZ" => 4,
             "SG" => 5,
@@ -474,6 +475,7 @@ impl FutuClient {
             begin_time,
             end_time: end_time_str,
             max_ack_kl_num: Some(1000),
+            extended_time: Some(extended_time),
             ..Default::default()
         };
 
@@ -533,6 +535,7 @@ impl FutuClient {
         ktype: &str,
         start: &str,
         end: &str,
+        extended_time: bool,
     ) -> Result<Vec<crate::types::KlineBar>, FutuError> {
         let mut all_data = Vec::new();
         let mut page_key: Option<Vec<u8>> = None;
@@ -557,7 +560,7 @@ impl FutuClient {
 
             let market = match parts[0] {
                 "HK" => 1,
-                "US" => 2,
+                "US" => 11,
                 "SH" => 3,
                 "SZ" => 4,
                 "SG" => 5,
@@ -590,6 +593,7 @@ impl FutuClient {
                 end_time: end.to_string(),
                 max_ack_kl_num: Some(1000),
                 next_req_key: page_key.clone(),
+                extended_time: Some(extended_time),
                 ..Default::default()
             };
 
@@ -677,7 +681,7 @@ impl FutuClient {
 
         let market = match parts[0] {
             "HK" => 1,
-            "US" => 2,
+            "US" => 11,
             "SH" => 3,
             "SZ" => 4,
             "SG" => 5,
@@ -697,7 +701,10 @@ impl FutuClient {
             security_list,
             sub_type_list,
             is_sub_or_un_sub: true,
+            is_reg_or_un_reg_push: Some(true), // Register for push notifications
             is_first_push: Some(true),
+            session: Some(3), // Session_ALL - required for US stocks
+            extended_time: Some(true), // Allow pre/post market data
             ..Default::default()
         };
 
@@ -738,6 +745,7 @@ impl FutuClient {
         push_tx: mpsc::UnboundedSender<ProtoResponse>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
+            eprintln!("[DEBUG] Push reader task started");
             let mut recv_buf = BytesMut::with_capacity(1024 * 1024);
             let mut buf = [0u8; 65536];
 
@@ -747,14 +755,19 @@ impl FutuClient {
                     let mut stream = stream.lock().await;
                     match stream.read(&mut buf).await {
                         Ok(n) => n,
-                        Err(_) => break,
+                        Err(e) => {
+                            eprintln!("[DEBUG] Push reader read error: {}", e);
+                            break;
+                        }
                     }
                 };
 
                 if n == 0 {
+                    eprintln!("[DEBUG] Push reader: connection closed");
                     break; // Connection closed
                 }
 
+                eprintln!("[DEBUG] Push reader: received {} bytes", n);
                 recv_buf.extend_from_slice(&buf[..n]);
 
                 // Parse all complete messages
@@ -762,7 +775,10 @@ impl FutuClient {
                     // Peek at header to get body length
                     let header = match FutuHeader::parse(&mut recv_buf) {
                         Ok(h) => h,
-                        Err(_) => break,
+                        Err(e) => {
+                            eprintln!("[DEBUG] Push reader: header parse error: {}", e);
+                            break;
+                        }
                     };
 
                     // Check if we have enough body
@@ -772,10 +788,13 @@ impl FutuClient {
 
                     let body = recv_buf.split_to(header.body_len as usize).freeze();
 
+                    eprintln!("[DEBUG] Push reader: proto_id={}, body_len={}", header.proto_id, header.body_len);
+
                     // Send push data to channel
                     if is_push_proto_id(header.proto_id) {
                         let response = ProtoResponse { header, body };
                         let _ = push_tx.send(response);
+                        eprintln!("[DEBUG] Push reader: sent to channel");
                     }
                 }
             }

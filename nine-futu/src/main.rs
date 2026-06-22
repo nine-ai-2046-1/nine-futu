@@ -36,6 +36,9 @@ enum Commands {
         foreground: bool,
 
         #[arg(long)]
+        all: bool,
+
+        #[arg(long)]
         cli: Option<String>,
     },
     Trade {
@@ -91,6 +94,9 @@ enum QuoteCommands {
 
         #[arg(long)]
         cli: Option<String>,
+
+        #[arg(long)]
+        extended: bool,
     },
 }
 
@@ -311,6 +317,7 @@ async fn run_subscription(
     timeframe: &str,
     process_mgr: &ProcessManager,
     cli_session: Option<&str>,
+    all_types: bool,
 ) -> anyhow::Result<()> {
     // Create PID file
     process_mgr.create_pid_file(full_code, timeframe)?;
@@ -330,14 +337,19 @@ async fn run_subscription(
     }
     client.init_connect().await?;
 
-    // Determine subscription types based on timeframe
-    let mut sub_types = vec![
-        SubType::Quote,
-        SubType::OrderBook,
-        SubType::Ticker,
-        SubType::RtData,
-        SubType::Broker,
-    ];
+    // Determine subscription types based on timeframe and --all flag
+    let mut sub_types = Vec::new();
+
+    if all_types {
+        // Subscribe to all data types
+        sub_types = vec![
+            SubType::Quote,
+            SubType::OrderBook,
+            SubType::Ticker,
+            SubType::RtData,
+            SubType::Broker,
+        ];
+    }
 
     // Add K-line type based on timeframe
     let kline_sub = match timeframe {
@@ -435,7 +447,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            QuoteCommands::Kline { code, ktype, start, end, period, num, json, delay, cli: cli_session } => {
+            QuoteCommands::Kline { code, ktype, start, end, period, num, json, delay, cli: cli_session, extended } => {
                 let (full_code, _market_id) = registry.parse_code(code)?;
 
                 if cli.debug {
@@ -478,19 +490,39 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 let kline_data = if is_minute && !has_start && !has_end {
-                    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-                    let tomorrow = (chrono::Local::now() + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+                    // Auto-find last trading day (max 7 days back)
+                    let mut found_data = Vec::new();
+                    let mut days_back = 0;
+                    let max_days_back = 7;
 
-                    if cli.debug {
-                        eprintln!("[DEBUG] Minute mode (all day): start={}, end={}", today, tomorrow);
+                    while days_back < max_days_back && found_data.is_empty() {
+                        let target_date = chrono::Local::now() - chrono::Duration::days(days_back);
+                        let date_str = target_date.format("%Y-%m-%d").to_string();
+                        let next_day = (target_date + chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+
+                        if cli.debug {
+                            eprintln!("[DEBUG] Trying date: {} (days_back={})", date_str, days_back);
+                        }
+
+                        found_data = client.get_history_kline_all(
+                            &full_code,
+                            ktype,
+                            &date_str,
+                            &next_day,
+                            *extended,
+                        ).await?;
+
+                        if !found_data.is_empty() {
+                            if cli.debug {
+                                eprintln!("[DEBUG] Found {} bars for {}", found_data.len(), date_str);
+                            }
+                            break;
+                        }
+
+                        days_back += 1;
                     }
 
-                    client.get_history_kline_all(
-                        &full_code,
-                        ktype,
-                        &today,
-                        &tomorrow,
-                    ).await?
+                    found_data
                 } else if has_start || has_end {
                     let (start_date, _start_time) = parse_ktype_time(ktype, &effective_start);
                     let (end_date, _end_time) = parse_ktype_time(ktype, end);
@@ -514,7 +546,7 @@ async fn main() -> anyhow::Result<()> {
                     };
 
                     if cli.debug {
-                        eprintln!("[DEBUG] History mode: start={}, end={}", final_start, final_end);
+                        eprintln!("[DEBUG] History mode: start={}, end={}, extended={}", final_start, final_end, extended);
                     }
 
                     client.get_history_kline_all(
@@ -522,6 +554,7 @@ async fn main() -> anyhow::Result<()> {
                         ktype,
                         &final_start,
                         &final_end,
+                        *extended,
                     ).await?
                 } else {
                     if cli.debug {
@@ -583,7 +616,7 @@ async fn main() -> anyhow::Result<()> {
             }
         },
 
-        Commands::Sub { code, timeframe, foreground, cli: cli_session } => {
+        Commands::Sub { code, timeframe, foreground, all: all_types, cli: cli_session } => {
             let (full_code, _market_id) = registry.parse_code(code)?;
             let process_mgr = ProcessManager::new();
 
@@ -596,11 +629,11 @@ async fn main() -> anyhow::Result<()> {
 
             if *foreground {
                 // Run in foreground
-                run_subscription(&cli, &full_code, timeframe, &process_mgr, cli_session.as_deref()).await?;
+                run_subscription(&cli, &full_code, timeframe, &process_mgr, cli_session.as_deref(), *all_types).await?;
             } else {
                 // Daemon mode: spawn new process
                 let exe = std::env::current_exe()?;
-                let args = vec![
+                let mut args = vec![
                     "sub".to_string(),
                     "-c".to_string(),
                     code.clone(),
@@ -608,6 +641,10 @@ async fn main() -> anyhow::Result<()> {
                     timeframe.clone(),
                     "-f".to_string(),
                 ];
+
+                if *all_types {
+                    args.push("--all".to_string());
+                }
 
                 if cli.debug {
                     eprintln!("[DEBUG] Spawning daemon process...");
