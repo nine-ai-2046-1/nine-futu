@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use nine_futu_lib::{FutuClient, MarketRegistry, ProcessManager, ErrorHandler, DaemonManager, LiveStorage, PushDataHandler, DefaultPushHandler, CliCallbackHandler, SubType};
+use nine_futu_lib::{FutuClient, MarketRegistry, ProcessManager, ErrorHandler, DaemonManager, LiveStorage, PushDataHandler, DefaultPushHandler, CliCallbackHandler, SubType, OutputMode};
 
 #[derive(Parser)]
 #[command(name = "nine-futu")]
@@ -25,19 +25,49 @@ enum Commands {
         #[command(subcommand)]
         command: QuoteCommands,
     },
+    /// Subscribe to real-time data (default: kline only, stdout output)
     Sub {
+        /// Stock code (e.g., 700, AAPL)
         #[arg(short = 'c', required = true)]
         code: String,
 
+        /// Kline timeframe (1m, 3m, 5m, 15m, 30m, 60m, 1d, 1w, 1M)
         #[arg(short = 't', long = "tf", default_value = "5m")]
         timeframe: String,
 
+        /// Run in foreground (don't daemonize)
         #[arg(short = 'f', long = "fe")]
         foreground: bool,
 
+        /// Subscribe to all data types (Quote, OrderBook, Ticker, RtData, Broker, Kline)
         #[arg(long)]
         all: bool,
 
+        /// Subscribe to real-time quotes
+        #[arg(long)]
+        quote: bool,
+
+        /// Subscribe to order book depth
+        #[arg(long)]
+        orderbook: bool,
+
+        /// Subscribe to ticker/trades
+        #[arg(long)]
+        ticker: bool,
+
+        /// Subscribe to real-time data
+        #[arg(long)]
+        rtdata: bool,
+
+        /// Subscribe to broker queue
+        #[arg(long)]
+        broker: bool,
+
+        /// Save to files at path (default: stdout only). Use --output "" for default path
+        #[arg(long)]
+        output: Option<Option<String>>,
+
+        /// CLI callback session ID
         #[arg(long)]
         cli: Option<String>,
     },
@@ -318,6 +348,12 @@ async fn run_subscription(
     process_mgr: &ProcessManager,
     cli_session: Option<&str>,
     all_types: bool,
+    quote: bool,
+    orderbook: bool,
+    ticker: bool,
+    rtdata: bool,
+    broker: bool,
+    output_mode: OutputMode,
 ) -> anyhow::Result<()> {
     // Create PID file
     process_mgr.create_pid_file(full_code, timeframe)?;
@@ -337,7 +373,7 @@ async fn run_subscription(
     }
     client.init_connect().await?;
 
-    // Determine subscription types based on timeframe and --all flag
+    // Determine subscription types based on flags
     let mut sub_types = Vec::new();
 
     if all_types {
@@ -349,9 +385,26 @@ async fn run_subscription(
             SubType::RtData,
             SubType::Broker,
         ];
+    } else {
+        // Add individual subscription types
+        if quote {
+            sub_types.push(SubType::Quote);
+        }
+        if orderbook {
+            sub_types.push(SubType::OrderBook);
+        }
+        if ticker {
+            sub_types.push(SubType::Ticker);
+        }
+        if rtdata {
+            sub_types.push(SubType::RtData);
+        }
+        if broker {
+            sub_types.push(SubType::Broker);
+        }
     }
 
-    // Add K-line type based on timeframe
+    // Add K-line type based on timeframe (always included)
     let kline_sub = match timeframe {
         "1m" => SubType::K1M,
         "3m" => SubType::K3M,
@@ -381,10 +434,12 @@ async fn run_subscription(
         // Start background task to read push data
         let stream = client.get_stream();
         let push_tx = client.get_push_sender().unwrap();
-        FutuClient::start_push_reader(stream, push_tx);
+        FutuClient::start_push_reader(stream, push_tx, cli.debug);
 
-        let mut handler = PushDataHandler::new(rx, timeframe);
-        handler.add_handler(Box::new(DefaultPushHandler));
+        let mut handler = PushDataHandler::new(rx, timeframe)
+            .with_output_mode(output_mode.clone());
+        
+        // DefaultPushHandler not needed - output routing is handled by PushDataHandler
         
         // Add CLI callback handler if --cli flag is provided
         if let Some(session_id) = cli_session {
@@ -616,7 +671,7 @@ async fn main() -> anyhow::Result<()> {
             }
         },
 
-        Commands::Sub { code, timeframe, foreground, all: all_types, cli: cli_session } => {
+        Commands::Sub { code, timeframe, foreground, all: all_types, quote, orderbook, ticker, rtdata, broker, output, cli: cli_session } => {
             let (full_code, _market_id) = registry.parse_code(code)?;
             let process_mgr = ProcessManager::new();
 
@@ -627,9 +682,38 @@ async fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
 
-            if *foreground {
+            // Build output mode from --output flag
+            let output_mode = match output {
+                Some(Some(path)) => {
+                    if path.is_empty() {
+                        OutputMode::FileDefault
+                    } else {
+                        OutputMode::File(std::path::PathBuf::from(path))
+                    }
+                }
+                Some(None) => OutputMode::FileDefault,
+                None => OutputMode::Stdout,
+            };
+
+            // Run in foreground if -f flag OR stdout mode (no --output)
+            let run_foreground = *foreground || matches!(output_mode, OutputMode::Stdout);
+
+            if run_foreground {
                 // Run in foreground
-                run_subscription(&cli, &full_code, timeframe, &process_mgr, cli_session.as_deref(), *all_types).await?;
+                run_subscription(
+                    &cli,
+                    &full_code,
+                    timeframe,
+                    &process_mgr,
+                    cli_session.as_deref(),
+                    *all_types,
+                    *quote,
+                    *orderbook,
+                    *ticker,
+                    *rtdata,
+                    *broker,
+                    output_mode,
+                ).await?;
             } else {
                 // Daemon mode: spawn new process
                 let exe = std::env::current_exe()?;
@@ -644,6 +728,32 @@ async fn main() -> anyhow::Result<()> {
 
                 if *all_types {
                     args.push("--all".to_string());
+                }
+                if *quote {
+                    args.push("--quote".to_string());
+                }
+                if *orderbook {
+                    args.push("--orderbook".to_string());
+                }
+                if *ticker {
+                    args.push("--ticker".to_string());
+                }
+                if *rtdata {
+                    args.push("--rtdata".to_string());
+                }
+                if *broker {
+                    args.push("--broker".to_string());
+                }
+                if let Some(out) = output {
+                    match out {
+                        Some(path) => {
+                            args.push("--output".to_string());
+                            if !path.is_empty() {
+                                args.push(path.clone());
+                            }
+                        }
+                        None => args.push("--output".to_string()),
+                    }
                 }
 
                 if cli.debug {

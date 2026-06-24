@@ -1,4 +1,16 @@
 use serde::Serialize;
+use std::path::PathBuf;
+
+/// Output mode for subscription data
+#[derive(Debug, Clone)]
+pub enum OutputMode {
+    /// Output to stdout (NDJSON format)
+    Stdout,
+    /// Save to files at specified path
+    File(PathBuf),
+    /// Save to files at default path (~/.opens/nine-futu/data/live/)
+    FileDefault,
+}
 
 /// Supported stock markets
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]

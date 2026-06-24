@@ -743,9 +743,12 @@ impl FutuClient {
     pub fn start_push_reader(
         stream: Arc<tokio::sync::Mutex<TcpStream>>,
         push_tx: mpsc::UnboundedSender<ProtoResponse>,
+        debug: bool,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
-            eprintln!("[DEBUG] Push reader task started");
+            if debug {
+                eprintln!("[DEBUG] Push reader task started");
+            }
             let mut recv_buf = BytesMut::with_capacity(1024 * 1024);
             let mut buf = [0u8; 65536];
 
@@ -756,18 +759,24 @@ impl FutuClient {
                     match stream.read(&mut buf).await {
                         Ok(n) => n,
                         Err(e) => {
-                            eprintln!("[DEBUG] Push reader read error: {}", e);
+                            if debug {
+                                eprintln!("[DEBUG] Push reader read error: {}", e);
+                            }
                             break;
                         }
                     }
                 };
 
                 if n == 0 {
-                    eprintln!("[DEBUG] Push reader: connection closed");
+                    if debug {
+                        eprintln!("[DEBUG] Push reader: connection closed");
+                    }
                     break; // Connection closed
                 }
 
-                eprintln!("[DEBUG] Push reader: received {} bytes", n);
+                if debug {
+                    eprintln!("[DEBUG] Push reader: received {} bytes", n);
+                }
                 recv_buf.extend_from_slice(&buf[..n]);
 
                 // Parse all complete messages
@@ -776,7 +785,9 @@ impl FutuClient {
                     let header = match FutuHeader::parse(&mut recv_buf) {
                         Ok(h) => h,
                         Err(e) => {
-                            eprintln!("[DEBUG] Push reader: header parse error: {}", e);
+                            if debug {
+                                eprintln!("[DEBUG] Push reader: header parse error: {}", e);
+                            }
                             break;
                         }
                     };
@@ -788,13 +799,17 @@ impl FutuClient {
 
                     let body = recv_buf.split_to(header.body_len as usize).freeze();
 
-                    eprintln!("[DEBUG] Push reader: proto_id={}, body_len={}", header.proto_id, header.body_len);
+                    if debug {
+                        eprintln!("[DEBUG] Push reader: proto_id={}, body_len={}", header.proto_id, header.body_len);
+                    }
 
                     // Send push data to channel
                     if is_push_proto_id(header.proto_id) {
                         let response = ProtoResponse { header, body };
                         let _ = push_tx.send(response);
-                        eprintln!("[DEBUG] Push reader: sent to channel");
+                        if debug {
+                            eprintln!("[DEBUG] Push reader: sent to channel");
+                        }
                     }
                 }
             }

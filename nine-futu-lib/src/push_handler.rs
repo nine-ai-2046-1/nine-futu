@@ -42,6 +42,9 @@ pub struct PushDataHandler {
     handlers: Vec<Box<dyn PushHandler>>,
     storage: LiveStorage,
     timeframe: String,
+    output_mode: OutputMode,
+    current_bar: Option<KlineBar>,
+    current_time_key: Option<String>,
 }
 
 impl PushDataHandler {
@@ -51,7 +54,15 @@ impl PushDataHandler {
             handlers: Vec::new(),
             storage: LiveStorage::new(),
             timeframe: timeframe.to_string(),
+            output_mode: OutputMode::Stdout,
+            current_bar: None,
+            current_time_key: None,
         }
+    }
+
+    pub fn with_output_mode(mut self, output_mode: OutputMode) -> Self {
+        self.output_mode = output_mode;
+        self
     }
 
     pub fn add_handler(&mut self, handler: Box<dyn PushHandler>) {
@@ -60,36 +71,39 @@ impl PushDataHandler {
 
     pub async fn run(&mut self) {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-
-        eprintln!("[DEBUG] PushDataHandler started, waiting for data...");
+        let is_minute_kline = matches!(self.timeframe.as_str(), "1m" | "3m" | "5m" | "15m" | "30m" | "60m");
 
         while let Some(response) = self.rx.recv().await {
             let proto_id = response.header.proto_id;
 
-            eprintln!("[DEBUG] Received push data: proto_id={}, body_len={}", proto_id, response.body.len());
-
             if let Some(push_data) = self.parse_push_data(proto_id, response) {
-                // Get code and determine storage path
                 let code = DataParser::extract_code(&push_data).to_string();
                 let data_type = DataParser::data_type_name(&push_data).to_string();
 
-                eprintln!("[DEBUG] Parsed push data: code={}, type={}", code, data_type);
+                // Handle kline data with bar completion buffer for minute klines
+                match &push_data {
+                    PushData::Kline(bar) => {
+                        if is_minute_kline {
+                            let should_output = if let Some(ref current_key) = self.current_time_key {
+                                bar.time_key != *current_key
+                            } else {
+                                false
+                            };
 
-                // Determine file path based on data type
-                let path = if data_type == "kline" {
-                    self.storage.get_kline_path(&code, &today, &self.timeframe)
-                } else {
-                    self.storage.get_data_path(&code, &today, &data_type)
-                };
+                            if should_output {
+                                if let Some(ref buffered_bar) = self.current_bar {
+                                    self.output_kline(buffered_bar, &code, &today);
+                                }
+                            }
 
-                eprintln!("[DEBUG] Storage path: {:?}", path);
-
-                // Convert to JSON and store
-                if let Ok(json) = DataParser::to_json(&push_data) {
-                    if let Err(e) = self.storage.append_line(&path, &json) {
-                        eprintln!("[DEBUG] Failed to write data: {}", e);
-                    } else {
-                        eprintln!("[DEBUG] Stored data to {:?}", path);
+                            self.current_bar = Some(bar.clone());
+                            self.current_time_key = Some(bar.time_key.clone());
+                        } else {
+                            self.output_kline(bar, &code, &today);
+                        }
+                    }
+                    _ => {
+                        self.output_data(&push_data, &code, &data_type, &today);
                     }
                 }
 
@@ -124,6 +138,52 @@ impl PushDataHandler {
                         for handler in &self.handlers {
                             handler.on_broker(d.clone());
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    fn output_kline(&self, bar: &KlineBar, code: &str, today: &str) {
+        if let Ok(json) = serde_json::to_string(bar) {
+            match &self.output_mode {
+                OutputMode::Stdout => {
+                    println!("{}", json);
+                }
+                OutputMode::File(path) => {
+                    let file_path = self.storage.get_kline_path(code, today, &self.timeframe);
+                    let full_path = path.join(file_path.strip_prefix(self.storage.base_dir()).unwrap_or(&file_path));
+                    if let Err(e) = self.storage.append_line(&full_path, &json) {
+                        eprintln!("[DEBUG] Failed to write kline data: {}", e);
+                    }
+                }
+                OutputMode::FileDefault => {
+                    let file_path = self.storage.get_kline_path(code, today, &self.timeframe);
+                    if let Err(e) = self.storage.append_line(&file_path, &json) {
+                        eprintln!("[DEBUG] Failed to write kline data: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    fn output_data(&self, push_data: &PushData, code: &str, data_type: &str, today: &str) {
+        if let Ok(json) = DataParser::to_json(push_data) {
+            match &self.output_mode {
+                OutputMode::Stdout => {
+                    println!("{}", json);
+                }
+                OutputMode::File(path) => {
+                    let file_path = self.storage.get_data_path(code, today, data_type);
+                    let full_path = path.join(file_path.strip_prefix(self.storage.base_dir()).unwrap_or(&file_path));
+                    if let Err(e) = self.storage.append_line(&full_path, &json) {
+                        eprintln!("[DEBUG] Failed to write data: {}", e);
+                    }
+                }
+                OutputMode::FileDefault => {
+                    let file_path = self.storage.get_data_path(code, today, data_type);
+                    if let Err(e) = self.storage.append_line(&file_path, &json) {
+                        eprintln!("[DEBUG] Failed to write data: {}", e);
                     }
                 }
             }
